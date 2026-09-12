@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="ru" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Инспекционный Чек-Лист Выдачи Автомобилей</title>
+
+    <!-- Palette Chosen: Vibrant Amber & Indigo / Slate Dark Mode -->
+    <!-- Plan Narrative: Single-page interactive vehicle handover checklist & protocol dashboard. Organizes 5 chronological handover stages with real-time feedback, critical checkpoint tracking, multi-language switching, Telegram report formatting, and visual chart dynamics. -->
+    <!-- Visualizations: Doughnut Chart (Chart.js via Canvas) for real-time handover completion progress. Diagrammatic flows and icons rendered purely via styled Tailwind HTML/CSS elements without SVG or Mermaid JS. -->
+    <!-- Confirmation: NEITHER Mermaid JS NOR SVG were used in this file -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+            height: 240px;
+            max-height: 280px;
+        }
+
+        .checkbox-touch:checked + label .check-icon {
+            background-color: #10b981;
+            border-color: #10b981;
+            color: #ffffff;
+        }
+        
+        .checkbox-touch:checked + label .check-icon::after {
+            content: "✓";
+        }
+
+        .checkbox-touch[data-critical="true"]:checked + label .check-icon {
+            background-color: #f43f5e;
+            border-color: #f43f5e;
+            color: #ffffff;
+        }
+
+        .checkbox-touch:checked + label .check-text {
+            text-decoration: line-through;
+            color: #94a3b8;
+        }
+
+        .checkbox-touch:checked + label {
+            background-color: rgba(241, 245, 249, 0.05);
+            border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        @keyframes highlightPulse {
+            0%, 100% { transform: scale(1); border-color: #ef4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { transform: scale(1.01); border-color: #f43f5e; box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+
+        .item-highlight {
+            animation: highlightPulse 1.2s ease-in-out 2;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .stage-nav-btn.active {
+            background-color: #6366f1;
+            color: #ffffff;
+            border-color: #818cf8;
+            box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased pb-28 pt-28 md:pb-12 md:pt-28 select-none">
+
+    <canvas id="confettiCanvas" class="fixed inset-0 pointer-events-none z-50"></canvas>
+
+    <header class="fixed top-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-2xl px-3 sm:px-4 py-3">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-2.5">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-xl shadow-lg shadow-indigo-500/30 shrink-0">
+                    🔑
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 id="txtHeaderTitle" class="font-black text-base md:text-lg text-white tracking-wider">ВЫДАЧА</h1>
+                        <span id="txtHeaderOfficeBadge" class="text-[10px] md:text-xs bg-amber-500/20 text-amber-300 font-bold px-2 py-0.5 rounded border border-amber-500/30">ОФИС</span>
+                    </div>
+                    <p id="txtHeaderSub" class="text-[11px] text-slate-400 font-medium hidden sm:block">Протокол подготовки и передачи авто клиенту</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-2 sm:space-x-3">
+                <button onclick="openLanguageModal()" class="px-2.5 sm:px-3 py-1.5 bg-indigo-900/60 hover:bg-indigo-800 active:scale-95 text-indigo-200 rounded-xl text-xs font-bold border border-indigo-700/60 transition flex items-center gap-1.5 shadow">
+                    <span id="currentLangFlag">🇷🇺</span>
+                    <span id="currentLangCode" class="uppercase font-extrabold text-[11px]">RU</span>
+                </button>
+
+                <button onclick="resetChecklist()" class="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 transition flex items-center gap-1.5 shadow">
+                    <span>🔄</span>
+                    <span id="txtResetBtn" class="hidden sm:inline">Сбросить</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <nav class="fixed top-[61px] left-0 right-0 z-30 bg-slate-900/90 backdrop-blur border-b border-slate-800/80 py-2.5 px-3 shadow-md">
+        <div id="navContainer" class="max-w-7xl mx-auto flex items-center space-x-2 overflow-x-auto no-scrollbar scroll-smooth">
+            <button id="navBtn_1" onclick="scrollToStage(1)" class="stage-nav-btn px-3.5 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition flex items-center gap-1.5 shrink-0">
+                <span id="txtNavStage1">1. Подготовка</span>
+                <span id="navBadge1" class="text-[10px] bg-indigo-500/30 px-1.5 py-0.2 rounded-full">0%</span>
+            </button>
+            <button id="navBtn_2" onclick="scrollToStage(2)" class="stage-nav-btn px-3.5 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition flex items-center gap-1.5 shrink-0">
+                <span id="txtNavStage2">🚨 2. Осмотр</span>
+                <span id="navBadge2" class="text-[10px] bg-rose-500/30 px-1.5 py-0.2 rounded-full">0%</span>
+            </button>
+            <button id="navBtn_3" onclick="scrollToStage(3)" class="stage-nav-btn px-3.5 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition flex items-center gap-1.5 shrink-0">
+                <span id="txtNavStage3">📸 3. Медиа</span>
+                <span id="navBadge3" class="text-[10px] bg-violet-500/30 px-1.5 py-0.2 rounded-full">0%</span>
+            </button>
+            <button id="navBtn_4" onclick="scrollToStage(4)" class="stage-nav-btn px-3.5 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition flex items-center gap-1.5 shrink-0">
+                <span id="txtNavStage4">4. Сервис</span>
+                <span id="navBadge4" class="text-[10px] bg-teal-500/30 px-1.5 py-0.2 rounded-full">0%</span>
+            </button>
+            <button id="navBtn_5" onclick="scrollToStage(5)" class="stage-nav-btn px-3.5 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition flex items-center gap-1.5 shrink-0">
+                <span id="txtNavStage5">🚨 5. Передача</span>
+                <span id="navBadge5" class="text-[10px] bg-amber-500/30 px-1.5 py-0.2 rounded-full">0%</span>
+            </button>
+            <button id="navBtn_6" onclick="scrollToStage(6)" class="stage-nav-btn px-3.5 py-1.5 bg-slate-800 text-slate-300 border border-slate-700 rounded-full text-xs font-bold whitespace-nowrap active:scale-95 transition flex items-center gap-1.5 shrink-0">
+                <span id="txtNavStage6">📊 Дашборд</span>
+            </button>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-3 sm:px-6">
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <div class="lg:col-span-7 xl:col-span-8 space-y-4">
+
+                <!-- STAGE 1 -->
+                <section id="stageCard1" class="stage-section bg-slate-900 rounded-2xl p-4 md:p-5 border border-slate-800 shadow-xl transition-all">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <div class="flex items-center space-x-3">
+                            <span class="w-8 h-8 rounded-xl bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow">1</span>
+                            <div>
+                                <h2 id="txtS1Header" class="font-bold text-white text-sm md:text-base">Этап 1: Предварительная подготовка (за 1 час)</h2>
+                                <p id="txtS1Sub" class="text-[11px] text-slate-400">Сверка брони, спец. запросы и пакет документов</p>
+                            </div>
+                        </div>
+                        <span id="stageProgress1" class="text-xs font-black text-indigo-400 bg-indigo-950/80 px-2.5 py-1 rounded-full border border-indigo-800">0%</span>
+                    </div>
+
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div id="stageBar1" class="bg-indigo-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <div class="mt-4 space-y-2.5">
+                        <div id="wrapper_1_1" class="item-wrapper">
+                            <input type="checkbox" id="check_1_1" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_1_1" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_1_1" class="font-bold text-slate-200 block mb-0.5">1.1 Сверка данных бронирования</span>
+                                    <span id="desc_1_1" class="check-text text-slate-400">Проверить марку, модель, госномер, время прибытия клиента и наличие доп. запросов (детское кресло).</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_1_2" class="item-wrapper">
+                            <input type="checkbox" id="check_1_2" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_1_2" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_1_2" class="font-bold text-slate-200 block mb-0.5">1.2 Подготовка документов и ключей</span>
+                                    <span id="desc_1_2" class="check-text text-slate-400">Подготовить ключи и распечатать бланк договора аренды.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- STAGE 2 -->
+                <section id="stageCard2" class="stage-section bg-slate-900 rounded-2xl p-4 md:p-5 border-2 border-rose-900/60 shadow-xl transition-all">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <div class="flex items-center space-x-3">
+                            <span class="w-8 h-8 rounded-xl bg-rose-600 text-white font-black text-sm flex items-center justify-center shadow">2</span>
+                            <div>
+                                <h2 class="font-bold text-white text-sm md:text-base flex items-center gap-2">
+                                    <span id="txtS2Header">2. Визуальный и технический контроль</span>
+                                    <span id="txtS2Badge" class="text-[10px] bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-black border border-rose-500/30">КРИТИЧНО</span>
+                                </h2>
+                                <p id="txtS2Sub" class="text-[11px] text-rose-300">Кузов, салон, багажник, омыватель и холодный кондиционер</p>
+                            </div>
+                        </div>
+                        <span id="stageProgress2" class="text-xs font-black text-rose-400 bg-rose-950/80 px-2.5 py-1 rounded-full border border-rose-800">0%</span>
+                    </div>
+
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div id="stageBar2" class="bg-rose-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <div class="mt-4 space-y-2.5">
+                        <div id="wrapper_2_1" class="item-wrapper">
+                            <input type="checkbox" id="check_2_1" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_2_1" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_2_1" class="font-bold text-slate-200 block mb-0.5">2.1 Осмотр кузова и стекол</span>
+                                    <span id="desc_2_1" class="check-text text-slate-400">Оценить качество мойки, проверить целостность лобового стекла (микросколы) и дисков/колпаков.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_2_2" class="item-wrapper">
+                            <input type="checkbox" id="check_2_2" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_2_2" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_2_2" class="font-bold text-slate-200 block mb-0.5">2.2 Осмотр салона и под сиденьями</span>
+                                    <span id="desc_2_2" class="check-text text-slate-400">Проверить чистоту сидений и ковриков. Обязательно проверить бардачок, дверные карманы и под сиденьями на забытый мусор и запахи.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_2_3" class="item-wrapper">
+                            <input type="checkbox" id="check_2_3" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_2_3" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_2_3" class="font-bold text-slate-200 block mb-0.5">2.3 Багажник и комплектация</span>
+                                    <span id="desc_2_3" class="check-text text-slate-400">Убедиться в чистоте багажника, наличии запасного колеса (или ремкомплекта), домкрата и баллонного ключа.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_2_4" class="item-wrapper">
+                            <input type="checkbox" id="check_2_4" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_2_4" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_2_4" class="font-bold text-slate-200 block mb-0.5">2.4 Двигатель и омыватель</span>
+                                    <span id="desc_2_4" class="check-text text-slate-400">Запустить двигатель (нет ошибок Check Engine/ABS), проверить дворники, омыватель, давление в шинах и долить воды в бачок.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_2_5" class="item-wrapper">
+                            <input type="checkbox" id="check_2_5" data-critical="true" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_2_5" class="flex items-start space-x-3 p-3.5 rounded-xl bg-rose-900/60 hover:bg-rose-900/80 border-2 border-rose-500 active:scale-[0.99] transition cursor-pointer shadow-lg shadow-rose-950/50">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-rose-400 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                        <span id="badge_2_5" class="bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded uppercase">🚨 ХОЛОДНЫЙ ВОЗДУХ</span>
+                                    </div>
+                                    <span id="title_2_5" class="font-black text-rose-100 block mb-0.5">2.5 Климат-контроль и электрооборудование</span>
+                                    <span id="desc_2_5" class="check-text text-rose-200 font-medium">Включить кондиционер на максимум — <strong>убедиться, что реально дует ХОЛОДНЫМ воздухом!</strong> Проверить фары, стопы и мультимедиа.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- STAGE 3 -->
+                <section id="stageCard3" class="stage-section bg-slate-900 rounded-2xl p-4 md:p-5 border border-slate-800 shadow-xl transition-all">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <div class="flex items-center space-x-3">
+                            <span class="w-8 h-8 rounded-xl bg-violet-600 text-white font-black text-sm flex items-center justify-center shadow">3</span>
+                            <div>
+                                <h2 id="txtS3Header" class="font-bold text-white text-sm md:text-base">Этап 3: Фото- и видеофиксация</h2>
+                                <p id="txtS3Sub" class="text-[11px] text-slate-400">Приборная панель, кузов 360°, салон и видео со звуком</p>
+                            </div>
+                        </div>
+                        <span id="stageProgress3" class="text-xs font-black text-violet-400 bg-violet-950/80 px-2.5 py-1 rounded-full border border-violet-800">0%</span>
+                    </div>
+
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div id="stageBar3" class="bg-violet-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <div class="mt-4 space-y-2.5">
+                        <div id="wrapper_3_1" class="item-wrapper">
+                            <input type="checkbox" id="check_3_1" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_3_1" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_3_1" class="font-bold text-slate-200 block mb-0.5">3.1 Фото приборной панели</span>
+                                    <span id="desc_3_1" class="check-text text-slate-400">Четкий кадр с читаемым текущим пробегом и уровнем топлива.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_3_2" class="item-wrapper">
+                            <input type="checkbox" id="check_3_2" data-critical="true" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_3_2" class="flex items-start space-x-3 p-3.5 rounded-xl bg-rose-950/30 hover:bg-rose-950/50 border border-rose-800/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-rose-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                        <span id="badge_3_2" class="bg-rose-500/30 text-rose-300 text-[9px] font-black px-1.5 py-0.2 rounded border border-rose-500/40">🚨 ФОТО 360° И НИЗ</span>
+                                        <span id="title_3_2" class="font-bold text-rose-200">3.2 Комплексная фотофиксация кузова</span>
+                                    </div>
+                                    <span id="desc_3_2" class="check-text text-slate-300">Снять 4 угла, лобовое, диски. <strong>Обязательно зафиксировать нижние кромки бамперов, пороги и крышу!</strong></span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_3_3" class="item-wrapper">
+                            <input type="checkbox" id="check_3_3" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_3_3" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_3_3" class="font-bold text-slate-200 block mb-0.5">3.3 Фото интерьера и багажника</span>
+                                    <span id="desc_3_3" class="check-text text-slate-400">Сфотографировать передние и задние сиденья, а также открытый багажник.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_3_4" class="item-wrapper">
+                            <input type="checkbox" id="check_3_4" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_3_4" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_3_4" class="font-bold text-slate-200 block mb-0.5">3.4 Видеофиксация 360° со звуком</span>
+                                    <span id="desc_3_4" class="check-text text-slate-400">Непрерывное видео: обход авто по кругу, салон и работающий двигатель (для фиксации звука работы).</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_3_5" class="item-wrapper">
+                            <input type="checkbox" id="check_3_5" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_3_5" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_3_5" class="font-bold text-slate-200 block mb-0.5">3.5 Выгрузка отчета в рабочий чат</span>
+                                    <span id="desc_3_5" class="check-text text-slate-400">Незамедлительно выгрузить все фото и видеоматериалы в профильную рабочую группу Telegram.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- STAGE 4 -->
+                <section id="stageCard4" class="stage-section bg-slate-900 rounded-2xl p-4 md:p-5 border border-slate-800 shadow-xl transition-all">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <div class="flex items-center space-x-3">
+                            <span class="w-8 h-8 rounded-xl bg-teal-600 text-white font-black text-sm flex items-center justify-center shadow">4</span>
+                            <div>
+                                <h2 id="txtS4Header" class="font-bold text-white text-sm md:text-base">Этап 4: Финальная подготовка (за 10-15 мин)</h2>
+                                <p id="txtS4Sub" class="text-[11px] text-slate-400">Питьевая вода, салфетки и подача авто на парковку</p>
+                            </div>
+                        </div>
+                        <span id="stageProgress4" class="text-xs font-black text-teal-400 bg-teal-950/80 px-2.5 py-1 rounded-full border border-teal-800">0%</span>
+                    </div>
+
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div id="stageBar4" class="bg-teal-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <div class="mt-4 space-y-2.5">
+                        <div id="wrapper_4_1" class="item-wrapper">
+                            <input type="checkbox" id="check_4_1" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_4_1" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_4_1" class="font-bold text-slate-200 block mb-0.5">4.1 Комплектация сервисных принадлежностей</span>
+                                    <span id="desc_4_1" class="check-text text-slate-400">Поместить питьевую воду в подстаканник, убедиться в наличии упаковки салфеток в салоне.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_4_2" class="item-wrapper">
+                            <input type="checkbox" id="check_4_2" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_4_2" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_4_2" class="font-bold text-slate-200 block mb-0.5">4.2 Подача автомобиля на парковку</span>
+                                    <span id="desc_4_2" class="check-text text-slate-400">Переместить авто на удобную и освещенную площадку для передачи клиенту.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- STAGE 5 -->
+                <section id="stageCard5" class="stage-section bg-slate-900 rounded-2xl p-4 md:p-5 border border-slate-800 shadow-xl transition-all">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+                        <div class="flex items-center space-x-3">
+                            <span class="w-8 h-8 rounded-xl bg-amber-600 text-white font-black text-sm flex items-center justify-center shadow">5</span>
+                            <div>
+                                <h2 id="txtS5Header" class="font-bold text-white text-sm md:text-base">Этап 5: Оформление, инструктаж и передача</h2>
+                                <p id="txtS5Sub" class="text-[11px] text-slate-400">Проверка документов, фото с клиентом, оплата и инструктаж</p>
+                            </div>
+                        </div>
+                        <span id="stageProgress5" class="text-xs font-black text-amber-400 bg-amber-950/80 px-2.5 py-1 rounded-full border border-amber-800">0%</span>
+                    </div>
+
+                    <div class="w-full bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                        <div id="stageBar5" class="bg-amber-500 h-full w-0 transition-all duration-300"></div>
+                    </div>
+
+                    <div class="mt-4 space-y-2.5">
+                        <div id="wrapper_5_1" class="item-wrapper">
+                            <input type="checkbox" id="check_5_1" data-critical="true" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_5_1" class="flex items-start space-x-3 p-3.5 rounded-xl bg-rose-950/30 hover:bg-rose-950/50 border border-rose-800/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-rose-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                        <span id="badge_5_1" class="bg-rose-500/30 text-rose-300 text-[9px] font-black px-1.5 py-0.2 rounded border border-rose-500/40">🚨 ФОТО С АВТО</span>
+                                        <span id="title_5_1" class="font-bold text-rose-200">5.1 Проверка документов и фото клиента</span>
+                                    </div>
+                                    <span id="desc_5_1" class="check-text text-slate-300">Сверить паспорт (штамп о въезде), ВУ арендатора. <strong>Сфотографировать клиента на фоне авто с видимым госномером!</strong></span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_5_2" class="item-wrapper">
+                            <input type="checkbox" id="check_5_2" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_5_2" class="flex items-start space-x-3 p-3.5 rounded-xl bg-slate-800/50 hover:bg-slate-800/80 border border-slate-700/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-slate-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <span id="title_5_2" class="font-bold text-slate-200 block mb-0.5">5.2 Оплата и подписание договора</span>
+                                    <span id="desc_5_2" class="check-text text-slate-400">Подписать договор, принять остаток платы и депозит, выдать экземпляр клиенту.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div id="wrapper_5_3" class="item-wrapper">
+                            <input type="checkbox" id="check_5_3" data-critical="true" onchange="updateChecklist()" class="checkbox-touch hidden">
+                            <label for="check_5_3" class="flex items-start space-x-3 p-3.5 rounded-xl bg-rose-950/30 hover:bg-rose-950/50 border border-rose-800/60 active:scale-[0.99] transition cursor-pointer">
+                                <span class="check-icon w-5 h-5 mt-0.5 rounded-md border-2 border-rose-500 flex items-center justify-center text-xs font-extrabold shrink-0 transition"></span>
+                                <div class="text-xs md:text-sm leading-snug">
+                                    <div class="flex items-center gap-1.5 mb-1">
+                                        <span id="badge_5_3" class="bg-rose-500/30 text-rose-300 text-[9px] font-black px-1.5 py-0.2 rounded border border-rose-500/40">🚨 ИНСТРУКТАЖ</span>
+                                        <span id="title_5_3" class="font-bold text-rose-200">5.3 Обязательный инструктаж правилам аренды</span>
+                                    </div>
+                                    <span id="desc_5_3" class="check-text text-slate-300"><strong>Проговорить:</strong> 1. Правило бака; 2. При ДТП — сначала звонок в WhatsApp нам; 3. Платные дороги/штрафы; 4. Запрет курения и дуриана.</span>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+
+            <!-- DASHBOARD / TG REPORT SIDEBAR -->
+            <div class="lg:col-span-5 xl:col-span-4 space-y-4">
+
+                <section id="stageCard6" class="stage-section bg-slate-900 rounded-2xl p-4 md:p-5 border border-indigo-900/50 shadow-xl space-y-4 lg:sticky lg:top-[125px]">
+                    <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+                        <h2 id="txtDashTitle" class="font-extrabold text-white text-sm md:text-base flex items-center gap-2">
+                            <span>📊</span> Динамика и Telegram Отчет
+                        </h2>
+                        <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded font-bold border border-indigo-500/30">LIVE</span>
+                    </div>
+
+                    <div class="chart-container">
+                        <canvas id="liveStatusChart"></canvas>
+                    </div>
+
+                    <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span id="txtTgTitle" class="text-xs font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>📱</span> Telegram Отчет
+                            </span>
+                            <span id="txtTgBadge" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">Шаблон</span>
+                        </div>
+
+                        <div class="space-y-3 text-xs">
+                            <div>
+                                <label id="lblTgCar" class="text-[10px] text-slate-400 block mb-1 font-semibold">Госномер авто:</label>
+                                <input type="text" id="tgCarName" value="" placeholder="Добавьте номер авто" maxlength="20" class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white font-medium focus:border-indigo-500 outline-none">
+                            </div>
+
+                            <div>
+                                <label id="lblTgStatus" class="text-[10px] text-slate-400 block mb-1 font-semibold">Статус выдачи (выберите из списка):</label>
+                                <select id="tgStatus" class="w-full p-2.5 bg-slate-900 border border-slate-700 rounded-lg text-emerald-400 font-bold focus:border-indigo-500 outline-none">
+                                    <option value="0">Автомобиль полностью подготовлен и выдан клиенту (замечаний нет)</option>
+                                    <option value="1">Выдан с фиксацией имеющихся мелких сколов/царапин в чате</option>
+                                    <option value="2">Выдан с фиксацией текущего уровня топлива по согласованию</option>
+                                    <option value="3">Выдача завершена, установлены доп. аксессуары (детское кресло)</option>
+                                    <option value="4">Выдача в процессе / незначительная задержка клиентской подготовки</option>
+                                </select>
+                            </div>
+
+                            <button onclick="copyTgReport()" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-amber-600 active:scale-98 text-white rounded-xl font-bold text-xs transition shadow-lg hover:brightness-110 flex items-center justify-center gap-2">
+                                <span>📋</span>
+                                <span id="btnCopyTg">Скопировать текст отчета</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="hidden lg:block pt-2">
+                        <button onclick="attemptFinish()" class="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-98 text-slate-950 font-black rounded-xl shadow-lg shadow-emerald-500/20 text-xs transition flex items-center justify-center gap-2 uppercase tracking-wider">
+                            <span>🎯</span>
+                            <span id="btnFinishDesk">Завершить выдачу</span>
+                        </button>
+                    </div>
+                </section>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- MOBILE BOTTOM DOCK -->
+    <div class="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 px-4 py-3 shadow-2xl lg:hidden">
+        <div class="max-w-md mx-auto flex items-center justify-between gap-3">
+            
+            <div class="flex items-center space-x-3 shrink-0">
+                <div id="dockRingContainer" class="w-11 h-11 rounded-full flex items-center justify-center p-1 bg-slate-800 relative" style="background: conic-gradient(#10b981 0deg, #334155 0deg);">
+                    <div class="w-full h-full bg-slate-900 rounded-full flex items-center justify-center">
+                        <span id="dockPercentText" class="font-black text-[11px] text-emerald-400">0%</span>
+                    </div>
+                </div>
+                <div>
+                    <div id="lblDockCritical" class="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Критично</div>
+                    <div id="dockCriticalBadge" class="text-xs font-black text-rose-400">0 / 4</div>
+                </div>
+            </div>
+
+            <button onclick="attemptFinish()" class="flex-1 py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-500 active:scale-95 text-slate-950 font-black rounded-xl shadow-lg shadow-emerald-500/20 text-xs transition flex items-center justify-center gap-1.5 uppercase tracking-wider">
+                <span>🎯</span>
+                <span id="btnFinishMob">Завершить</span>
+            </button>
+
+        </div>
+    </div>
+
+    <!-- LANGUAGE SELECTION MODAL -->
+    <div id="modalLanguage" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 rounded-3xl max-w-md w-full p-6 border border-indigo-500/50 shadow-2xl space-y-5 text-center">
+            
+            <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center text-3xl mx-auto border border-indigo-500/30 shadow-lg">
+                🌐
+            </div>
+
+            <div>
+                <h3 id="txtLangModalTitle" class="text-lg font-black text-white">Выберите язык / Choose Language</h3>
+                <p id="txtLangModalSub" class="text-xs text-slate-400 mt-1">Select application language / เลือกภาษา</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 pt-2">
+                <button onclick="selectLanguage('ru')" class="p-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-2xl border border-slate-700 transition flex flex-col items-center gap-2 shadow hover:border-indigo-500">
+                    <span class="text-3xl">🇷🇺</span>
+                    <span class="text-xs">Русский</span>
+                </button>
+
+                <button onclick="selectLanguage('en')" class="p-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-2xl border border-slate-700 transition flex flex-col items-center gap-2 shadow hover:border-indigo-500">
+                    <span class="text-3xl">🇬🇧</span>
+                    <span class="text-xs">English</span>
+                </button>
+
+                <button onclick="selectLanguage('th')" class="p-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-2xl border border-slate-700 transition flex flex-col items-center gap-2 shadow hover:border-indigo-500">
+                    <span class="text-3xl">🇹🇭</span>
+                    <span class="text-xs">ไทย (Thai)</span>
+                </button>
+
+                <button onclick="selectLanguage('my')" class="p-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-2xl border border-slate-700 transition flex flex-col items-center gap-2 shadow hover:border-indigo-500">
+                    <span class="text-3xl">🇲🇲</span>
+                    <span class="text-xs">မြန်မာ (Burmese)</span>
+                </button>
+            </div>
+
+            <div class="pt-2 text-[11px] text-amber-400 bg-amber-950/40 p-2.5 rounded-xl border border-amber-800/60">
+                ℹ️ <span id="txtLangModalNote">Report copied to Telegram will ALWAYS be in English.</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- WARNING MODAL -->
+    <div id="modalWarning" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden flex items-end sm:items-center justify-center p-3">
+        <div class="bg-slate-900 rounded-3xl max-w-md w-full p-5 border border-rose-900/60 shadow-2xl space-y-4">
+            
+            <div class="flex items-center gap-3 text-rose-500 border-b border-slate-800 pb-3">
+                <span class="text-2xl">⚠️</span>
+                <div>
+                    <h3 id="txtWarnTitle" class="text-base font-extrabold text-white leading-tight">Выдача не завершена!</h3>
+                    <p id="txtWarnSub" class="text-[11px] text-rose-300">Остались пропущенные шаги подготовки</p>
+                </div>
+            </div>
+
+            <div class="space-y-3 max-h-64 overflow-y-auto pr-1">
+                <div id="criticalWarningBlock" class="hidden bg-rose-950/40 p-3 rounded-2xl border border-rose-800/80">
+                    <div id="txtWarnCritHeader" class="font-black text-rose-300 text-[11px] uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <span>🚨</span> КРИТИЧЕСКИЕ ПРОПУСКИ:
+                    </div>
+                    <div id="criticalMissingList" class="space-y-1.5"></div>
+                </div>
+
+                <div id="standardWarningBlock" class="hidden bg-amber-950/40 p-3 rounded-2xl border border-amber-800/80">
+                    <div id="txtWarnStdHeader" class="font-black text-amber-300 text-[11px] uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <span>📋</span> Обычные невыполненные шаги:
+                    </div>
+                    <div id="standardMissingList" class="space-y-1.5"></div>
+                </div>
+            </div>
+
+            <button onclick="closeModal('modalWarning')" class="w-full py-3.5 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold rounded-xl text-xs transition border border-slate-700">
+                <span id="btnWarnClose">Понятно, вернуться к подготовке</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- SUCCESS MODAL -->
+    <div id="modalSuccess" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+        <div class="bg-slate-900 rounded-3xl max-w-md w-full p-6 text-center border border-emerald-500/50 shadow-2xl space-y-4">
+            
+            <div class="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center text-3xl mx-auto border border-emerald-500/30">
+                🎉
+            </div>
+
+            <div>
+                <h3 id="txtSuccTitle" class="text-xl font-black text-white">Выдача завершена!</h3>
+                <p id="txtSuccSub" class="text-xs text-slate-300 mt-1">
+                    Все шаги протокола подготовки и передаче авто пройдены. Риск финансовых претензий снижен до 0%.
+                </p>
+            </div>
+
+            <div class="bg-slate-950 p-3.5 rounded-xl text-left text-xs space-y-1.5 border border-slate-800">
+                <div class="text-slate-400 flex justify-between">
+                    <span id="txtSuccRow1">Прогресс протокола:</span>
+                    <span id="txtSuccVal1" class="text-emerald-400 font-bold">100% Выполнено</span>
+                </div>
+                <div class="text-slate-400 flex justify-between">
+                    <span id="txtSuccRow2">Критический контроль:</span>
+                    <span id="txtSuccVal2" class="text-emerald-400 font-bold">4 из 4 проверено</span>
+                </div>
+                <div class="text-slate-400 flex justify-between">
+                    <span id="txtSuccRow3">Тест холодного воздуха:</span>
+                    <span id="txtSuccVal3" class="text-emerald-400 font-bold">Выполнен</span>
+                </div>
+            </div>
+
+            <button onclick="closeModal('modalSuccess')" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black rounded-xl text-xs shadow-lg transition active:scale-95">
+                <span id="btnSuccClose">Закрыть окно</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const I18N = {
+            ru: {
+                flag: '🇷🇺',
+                code: 'RU',
+                headerTitle: 'ВЫДАЧА',
+                officeBadge: 'ОФИС',
+                headerSub: 'Протокол подготовки и передачи авто клиенту',
+                resetBtn: 'Сбросить',
+                nav: ['1. Подготовка', '🚨 2. Осмотр', '📸 3. Медиа', '4. Сервис', '🚨 5. Передача', '📊 Дашборд'],
+                s1: {
+                    header: 'Этап 1: Предварительная подготовка (за 1 час)',
+                    sub: 'Сверка брони, спец. запросы и пакет документов',
+                    i11Title: '1.1 Сверка данных бронирования',
+                    i11Desc: 'Проверить марку, модель, госномер, время прибытия клиента и наличие доп. запросов (детское кресло).',
+                    i12Title: '1.2 Подготовка документов и ключей',
+                    i12Desc: 'Подготовить ключи и распечатать бланк договора аренды.'
+                },
+                s2: {
+                    header: '2. Визуальный и технический контроль',
+                    badge: 'КРИТИЧНО',
+                    sub: 'Кузов, салон, багажник, омыватель и холодный кондиционер',
+                    i21Title: '2.1 Осмотр кузова и стекол',
+                    i21Desc: 'Оценить качество мойки, проверить целостность лобового стекла (микросколы) и дисков/колпаков.',
+                    i22Title: '2.2 Осмотр салона и под сиденьями',
+                    i22Desc: 'Проверить чистоту сидений и ковриков. Обязательно проверить бардачок, дверные карманы и под сиденьями на забытый мусор и запахи.',
+                    i23Title: '2.3 Багажник и комплектация',
+                    i23Desc: 'Убедиться в чистоте багажника, наличии запасного колеса (или ремкомплекта), домкрата и баллонного ключа.',
+                    i24Title: '2.4 Двигатель и омыватель',
+                    i24Desc: 'Запустить двигатель (нет ошибок Check Engine/ABS), проверить дворники, омыватель, давление в шинах и долить воды в бачок.',
+                    badge25: '🚨 ХОЛОДНЫЙ ВОЗДУХ',
+                    i25Title: '2.5 Климат-контроль и электрооборудование',
+                    i25Desc: 'Включить кондиционер на максимум — убедиться, что реально дует ХОЛОДНЫМ воздухом! Проверить фары, стопы и мультимедиа.'
+                },
+                s3: {
+                    header: 'Этап 3: Фото- и видеофиксация',
+                    sub: 'Приборная панель, кузов 360°, салон и видео со звуком',
+                    i31Title: '3.1 Фото приборной панели',
+                    i31Desc: 'Четкий кадр с читаемым текущим пробегом и уровнем топлива.',
+                    badge32: '🚨 ФОТО 360° И НИЗ',
+                    i32Title: '3.2 Комплексная фотофиксация кузова',
+                    i32Desc: 'Снять 4 угла, лобовое, диски. Обязательно зафиксировать нижние кромки бамперов, пороги и крышу!',
+                    i33Title: '3.3 Фото интерьера и багажника',
+                    i33Desc: 'Сфотографировать передние и задние сиденья, а также открытый багажник.',
+                    i34Title: '3.4 Видеофиксация 360° со звуком',
+                    i34Desc: 'Непрерывное видео: обход авто по кругу, салон и работающий двигатель (для фиксации звука работы).',
+                    i35Title: '3.5 Выгрузка отчета в рабочий чат',
+                    i35Desc: 'Незамедлительно выгрузить все фото и видеоматериалы в профильную рабочую группу Telegram.'
+                },
+                s4: {
+                    header: 'Этап 4: Финальная подготовка (за 10-15 мин)',
+                    sub: 'Питьевая вода, салфетки и подача авто на парковку',
+                    i41Title: '4.1 Комплектация сервисных принадлежностей',
+                    i41Desc: 'Поместить питьевую воду в подстаканник, убедиться в наличии упаковки салфеток в салоне.',
+                    i42Title: '4.2 Подача автомобиля на парковку',
+                    i42Desc: 'Переместить авто на удобную и освещенную площадку для передачи клиенту.'
+                },
+                s5: {
+                    header: 'Этап 5: Оформление, инструктаж и передача',
+                    sub: 'Проверка документов, фото с клиентом, оплата и инструктаж',
+                    badge51: '🚨 ФОТО С АВТО',
+                    i51Title: '5.1 Проверка документов и фото клиента',
+                    i51Desc: 'Сверить паспорт (штамп о въезде), ВУ арендатора. Сфотографировать клиента на фоне авто с видимым госномером!',
+                    i52Title: '5.2 Оплата и подписание договора',
+                    i52Desc: 'Подписать договор, принять остаток платы и депозит, выдать экземпляр клиенту.',
+                    badge53: '🚨 ИНСТРУКТАЖ',
+                    i53Title: '5.3 Обязательный инструктаж правилам аренды',
+                    i53Desc: 'Проговорить: 1. Правило бака; 2. При ДТП — сначала звонок в WhatsApp нам; 3. Платные дороги/штрафы; 4. Запрет курения и дуриана.'
+                },
+                dash: {
+                    title: 'Динамика и Telegram Отчет',
+                    tgTitle: 'Telegram Отчет',
+                    tgBadge: 'Шаблон',
+                    lblCar: 'Госномер авто:',
+                    placeholderCar: 'Добавьте номер авто',
+                    lblStatus: 'Статус выдачи (выберите из списка):',
+                    statuses: [
+                        'Автомобиль полностью подготовлен и выдан клиенту (замечаний нет)',
+                        'Выдан с фиксацией имеющихся мелких сколов/царапин в чате',
+                        'Выдан с фиксацией текущего уровня топлива по согласованию',
+                        'Выдача завершена, установлены доп. аксессуары (детское кресло)',
+                        'Выдача в процессе / незначительная задержка клиентской подготовки'
+                    ],
+                    btnCopy: 'Скопировать текст отчета',
+                    btnFinish: 'Завершить выдачу',
+                    dockCrit: 'Критично'
+                },
+                chart: {
+                    done: 'Готово',
+                    remaining: ['Осталось', 'проверить']
+                },
+                modalWarn: {
+                    title: 'Выдача не завершена!',
+                    sub: 'Остались пропущенные шаги подготовки',
+                    critHeader: 'КРИТИЧЕСКИЕ ПРОПУСКИ:',
+                    stdHeader: 'Обычные невыполненные шаги:',
+                    btnClose: 'Понятно, вернуться к подготовке',
+                    btnJump: 'Перейти →'
+                },
+                modalSucc: {
+                    title: 'Выдача завершена!',
+                    sub: 'Все шаги протокола подготовки и передаче авто пройдены. Риск финансовых претензий снижен до 0%.',
+                    row1: 'Прогресс протокола:',
+                    val1: '100% Выполнено',
+                    row2: 'Критический контроль:',
+                    val2: '4 из 4 проверено',
+                    row3: 'Тест холодного воздуха:',
+                    val3: 'Выполнен',
+                    btnClose: 'Закрыть окно'
+                }
+            },
+            en: {
+                flag: '🇬🇧',
+                code: 'EN',
+                headerTitle: 'HANDOVER',
+                officeBadge: 'OFFICE',
+                headerSub: 'Vehicle Handover & Preparation Protocol',
+                resetBtn: 'Reset',
+                nav: ['1. Prep', '🚨 2. Check', '📸 3. Media', '4. Service', '🚨 5. Handover', '📊 Dashboard'],
+                s1: {
+                    header: 'Stage 1: Pre-Handover Preparation (1h before)',
+                    sub: 'Booking verification, special requests & document prep',
+                    i11Title: '1.1 Booking Data Verification',
+                    i11Desc: 'Verify car details (make, model, plate), arrival time, extra requests (child seat).',
+                    i12Title: '1.2 Document & Key Preparation',
+                    i12Desc: 'Prepare car keys and print rental agreement.'
+                },
+                s2: {
+                    header: '2. Visual & Technical Inspection',
+                    badge: 'CRITICAL',
+                    sub: 'Body, interior, trunk, washer fluid & cold AC test',
+                    i21Title: '2.1 Body & Glass Inspection',
+                    i21Desc: 'Evaluate wash quality, check windshield for micro-chips, inspect wheels/rims.',
+                    i22Title: '2.2 Interior & Under-Seat Inspection',
+                    i22Desc: 'Check seats and mats. Inspect glovebox, door pockets & under seats for trash/odors.',
+                    i23Title: '2.3 Trunk & Emergency Kit',
+                    i23Desc: 'Verify clean trunk, check spare tire/repair kit, jack, and lug wrench.',
+                    i24Title: '2.4 Engine & Fluid Check',
+                    i24Desc: 'Start engine (no warning lights), test wipers, washer fluid, tire pressure, top off water.',
+                    badge25: '🚨 COLD AIR TEST',
+                    i25Title: '2.5 Climate Control & Electrics',
+                    i25Desc: 'Turn AC to max — verify it actually blows COLD air! Test headlights, brake lights, indicators, and screen.'
+                },
+                s3: {
+                    header: 'Stage 3: Photo & Video Documentation',
+                    sub: 'Cluster, 360° body, interior & video with engine audio',
+                    i31Title: '3.1 Dashboard Instrument Photo',
+                    i31Desc: 'Clear photo showing readable mileage and fuel gauge.',
+                    badge32: '🚨 360° & UNDERSIDE',
+                    i32Title: '3.2 Comprehensive Body Photo Audit',
+                    i32Desc: 'Capture 4 corner angles, windshield, wheels. Must photograph lower bumper lips, side sills & roof!',
+                    i33Title: '3.3 Interior & Trunk Photos',
+                    i33Desc: 'Photograph front and rear seats, as well as open trunk.',
+                    i34Title: '3.4 360° Video Walkaround with Audio',
+                    i34Desc: 'Continuous video: full walkaround, cabin view, running engine (record engine sound).',
+                    i35Title: '3.5 Telegram Group Media Upload',
+                    i35Desc: 'Immediately upload all photos and video to the designated Telegram group.'
+                },
+                s4: {
+                    header: 'Stage 4: Final Preparation (10-15m before)',
+                    sub: 'Water bottle, tissues & car positioning',
+                    i41Title: '4.1 Service Amenities Setup',
+                    i41Desc: 'Place drinking water in cupholder, ensure tissue pack is in the cabin.',
+                    i42Title: '4.2 Parking & Positioning',
+                    i42Desc: 'Move car to a comfortable, well-lit handover area on the parking lot.'
+                },
+                s5: {
+                    header: 'Stage 5: Documents, Briefing & Client Handover',
+                    sub: 'ID verification, client photo, payment & rental rules',
+                    badge51: '🚨 CLIENT PHOTO',
+                    i51Title: '5.1 ID Verification & Client Photo',
+                    i51Desc: 'Check passport (entry stamp), driver license. Photograph client next to the car with visible plate number!',
+                    i52Title: '5.2 Payment & Contract Signing',
+                    i52Desc: 'Sign rental agreement, collect remaining payment & deposit, hand copy to client.',
+                    badge53: '🚨 MANDATORY BRIEFING',
+                    i53Title: '5.3 Mandatory Client Briefing',
+                    i53Desc: 'Brief client on: 1. Fuel level rule; 2. Accident -> Call WhatsApp us FIRST; 3. Tolls/fines; 4. No smoking/durian.'
+                },
+                dash: {
+                    title: 'Live Dashboard & TG Report',
+                    tgTitle: 'Telegram Report',
+                    tgBadge: 'Template',
+                    lblCar: 'Car Plate:',
+                    placeholderCar: 'Add car plate number',
+                    lblStatus: 'Handover Status (select from list):',
+                    statuses: [
+                        'Car fully prepared & handed over to client (no issues, deposit received)',
+                        'Handed over with existing scratch noted (photo logged in chat)',
+                        'Handed over with fuel level logged per agreement',
+                        'Handover completed, extra accessories provided (child seat)',
+                        'Handover pending / minor technical adjustment before departure'
+                    ],
+                    btnCopy: 'Copy Report Text',
+                    btnFinish: 'Finish Handover',
+                    dockCrit: 'Critical'
+                },
+                chart: {
+                    done: 'Completed',
+                    remaining: ['Remaining', 'to check']
+                },
+                modalWarn: {
+                    title: 'Handover Incomplete!',
+                    sub: 'There are skipped preparation steps',
+                    critHeader: 'CRITICAL MISSING STEPS:',
+                    stdHeader: 'Standard Skipped Steps:',
+                    btnClose: 'Got it, return to preparation',
+                    btnJump: 'Go to →'
+                },
+                modalSucc: {
+                    title: 'Handover Completed!',
+                    sub: 'All preparation and handover protocol steps passed successfully. Claim risks reduced to 0%.',
+                    row1: 'Protocol Progress:',
+                    val1: '100% Completed',
+                    row2: 'Critical Control:',
+                    val2: '4 of 4 checked',
+                    row3: 'Cold Air Test:',
+                    val3: 'Completed',
+                    btnClose: 'Close Window'
+                }
+            },
+            th: {
+                flag: '🇹🇭',
+                code: 'TH',
+                headerTitle: 'การส่งมอบรถ',
+                officeBadge: 'ออฟฟิศ',
+                headerSub: 'พิธีสารการเตรียมความพร้อมและส่งมอบรถยนต์ให้ลูกค้า',
+                resetBtn: 'รีเซ็ต',
+                nav: ['1. เตรียมงาน', '🚨 2. ตรวจเช็ค', '📸 3. ถ่ายภาพ', '4. สวัสดิการ', '🚨 5. ส่งมอบ', '📊 แดชบอร์ด'],
+                s1: {
+                    header: 'ขั้นตอนที่ 1: การเตรียมงานล่วงหน้า (1 ชั่วโมงก่อนส่งมอบ)',
+                    sub: 'ตรวจสอบการจอง ความต้องการพิเศษ และเตรียมเอกสาร',
+                    i11Title: '1.1 ตรวจสอบข้อมูลการจอง',
+                    i11Desc: 'เช็ครุ่นรถ ทะเบียนรถ เวลาลูกค้ามาถึง และรายการเสริม (เบาะเด็ก)',
+                    i12Title: '1.2 เตรียมกุญแจและเอกสาร',
+                    i12Desc: 'เตรียมกุญแจรถและพิมพ์สัญญาเช่ารถยนต์'
+                },
+                s2: {
+                    header: 'ขั้นตอนที่ 2: การตรวจเช็คสภาพรถและระบบเทคนิค',
+                    badge: 'วิกฤต',
+                    sub: 'ตัวถัง, ภายใน, กระโปรงหลัง, น้ำฉีดกระจก และทดสอบแอร์เย็น',
+                    i21Title: '2.1 ตรวจสอบตัวถังและกระจก',
+                    i21Desc: 'เช็คความสะอาดการล้าง รอยหินกะเทาะกระจกหน้า และสภาพล้อแม็ก/ยาง',
+                    i22Title: '2.2 ตรวจสอบภายในและใต้เบาะ',
+                    i22Desc: 'เช็คความสะอาดเบาะ/พรม ตรวจเก๊ะเก็บของ ช่องข้างประตู และใต้เบาะเพื่อไม่ให้มีขยะ/กลิ่นอับ',
+                    i23Title: '2.3 กระโปรงหลังและอุปกรณ์ฉุกเฉิน',
+                    i23Desc: 'ตรวจความสะอาดท้ายรถ เช็คล้ออะไหล่/ชุดซ่อมยาง แม่แรง และประแจ',
+                    i24Title: '2.4 ตรวจสอบเครื่องยนต์และของเหลว',
+                    i24Desc: 'สตาร์ทเครื่องยนต์ (ไม่มีไฟเตือน), ตรวจที่ปัดน้ำฝน แรงดันลมยาง เติมน้ำฉีดกระจกให้เต็ม',
+                    badge25: '🚨 ทดสอบแอร์เย็น',
+                    i25Title: '2.5 ระบบแอร์และไฟฟ้า',
+                    i25Desc: 'เปิดแอร์แรงสุด — ต้องมั่นใจว่าแอร์เย็นจริง ไม่ใช่แค่ลม! เช็คไฟหน้า ไฟเบรก ไฟเลี้ยว หน้าจอ'
+                },
+                s3: {
+                    header: 'ขั้นตอนที่ 3: การถ่ายภาพและวิดีโอบันทึกสภาพ',
+                    sub: 'หน้าปัด, ตัวถัง 360°, ภายใน และวิดีโอพร้อมเสียงเครื่องยนต์',
+                    i31Title: '3.1 ถ่ายรูปหน้าปัดเรือนไมล์',
+                    i31Desc: 'ถ่ายรูปหน้าปัดให้เห็นเลขไมล์และระดับน้ำมันชัดเจน',
+                    badge32: '🚨 ถ่าย 360° และสเกิร์ต',
+                    i32Title: '3.2 บันทึกภาพตัวถังแบบละเอียด',
+                    i32Desc: 'ถ่ายรูป 4 มุม กระจกหน้า ล้อแม็ก ต้องถ่ายใต้กันชนหน้า สเกิร์ตข้าง และหลังคาด้วย!',
+                    i33Title: '3.3 ถ่ายรูปภายในและห้องสัมภาระ',
+                    i33Desc: 'ถ่ายภาพเบาะหน้า เบาะหลัง และห้องเก็บสัมภาระท้ายรถ',
+                    i34Title: '3.4 บันทึกวิดีโอ 360° พร้อมเสียง',
+                    i34Desc: 'วิดีโอต่อเนื่อง: เดินรอบคัน ถ่ายภายใน และบันทึกเสียงเครื่องยนต์ขณะทำงาน',
+                    i35Title: '3.5 ส่งรายงานเข้ากลุ่มงาน Telegram',
+                    i35Desc: 'อัปโหลดรูปภาพและวิดีโอทั้งหมดเข้ากลุ่ม Telegram ทำงานทันที'
+                },
+                s4: {
+                    header: 'ขั้นตอนที่ 4: การเตรียมความพร้อมขั้นสุดท้าย (10-15 นาทีก่อนลูกค้ามา)',
+                    sub: 'น้ำดื่ม ทิชชู่ และการจอดรถรอส่งมอบ',
+                    i41Title: '4.1 จัดเตรียมสิ่งอำนวยความสะดวก',
+                    i41Desc: 'วางน้ำดื่มในช่องวางแก้ว วางกล่องทิชชู่ในห้องโดยสาร',
+                    i42Title: '4.2 นำรถเข้าจอดจุดส่งมอบ',
+                    i42Desc: 'ขยับรถไปจอดในจุดส่งมอบที่สะดวกและมีแสงสว่างเพียงพอ'
+                },
+                s5: {
+                    header: 'ขั้นตอนที่ 5: ตรวจเอกสาร อธิบายกฎ และส่งมอบรถ',
+                    sub: 'ตรวจเอกสาร ถ่ายรูปลูกค้า ชำระเงิน และอธิบายเงื่อนไข',
+                    badge51: '🚨 ถ่ายรูปลูกค้ากับรถ',
+                    i51Title: '5.1 ตรวจสอบเอกสารและถ่ายรูปลูกค้า',
+                    i51Desc: 'เช็คพาสปอร์ต (ตราประทับ) ใบขับขี่ ถ่ายรูปลูกค้าคู่กับรถให้เห็นป้ายทะเบียนชัดเจน!',
+                    i52Title: '5.2 เซ็นสัญญาและรับชำระเงิน',
+                    i52Desc: 'เซ็นสัญญาเช่า รับเงินค่าเช่าส่วนที่เหลือและเงินประกัน มอบคู่ฉบับให้ลูกค้า',
+                    badge53: '🚨 อธิบายกฎสำคัญ',
+                    i53Title: '5.3 ชี้แจงเงื่อนไขการเช่ารถยนต์',
+                    i53Desc: 'แจ้งลูกค้า: 1. กฎระดับน้ำมันคืน; 2. กรณีอุบัติเหตุ -> ทัก WhatsApp หาเราก่อน; 3. ค่าทางด่วน/ใบสั่ง; 4. ห้ามสูบบุหรี่/กินทุเรียน'
+                },
+                dash: {
+                    title: 'สถิติและรายงาน Telegram',
+                    tgTitle: 'รายงาน Telegram',
+                    tgBadge: 'แม่แบบ',
+                    lblCar: 'ทะเบียนรถ:',
+                    placeholderCar: 'กรอกทะเบียนรถ',
+                    lblStatus: 'สถานะการส่งมอบรถ (เลือกจากรายการ):',
+                    statuses: [
+                        'เตรียมรถพร้อม 100% ส่งมอบเรียบร้อยไร้ข้อร้องเรียน',
+                        'ส่งมอบพร้อมบันทึกรอยขีดข่วนเดิมเข้ากลุ่มแชท',
+                        'ส่งมอบพร้อมบันทึกระดับน้ำมันตามข้อตกลง',
+                        'ส่งมอบเรียบร้อยพร้อมติดตั้งอุปกรณ์เสริม (เบาะเด็ก)',
+                        'อยู่ระหว่างการส่งมอบ / ล่าช้าเล็กน้อยจากฝั่งลูกค้า'
+                    ],
+                    btnCopy: 'คัดลอกข้อความรายงาน',
+                    btnFinish: 'เสร็จสิ้นการส่งมอบ',
+                    dockCrit: 'สำคัญ'
+                },
+                chart: {
+                    done: 'เรียบร้อย',
+                    remaining: ['คงเหลือ', 'ตรวจ']
+                },
+                modalWarn: {
+                    title: 'ยังส่งมอบรถไม่เสร็จ!',
+                    sub: 'ยังมีขั้นตอนการเตรียมงานที่ถูกข้ามไป',
+                    critHeader: 'รายการสำคัญที่ยังไม่ได้ตรวจ:',
+                    stdHeader: 'รายการทั่วไปที่ข้ามไป:',
+                    btnClose: 'รับทราบ กลับไปเตรียมงาน',
+                    btnJump: 'ไปที่ →'
+                },
+                modalSucc: {
+                    title: 'เสร็จสิ้นการส่งมอบ!',
+                    sub: 'ผ่านการเตรียมความพร้อมและส่งมอบรถยนต์ทุกขั้นตอนเรียบร้อย ลดความเสี่ยงข้อร้องเรียน 100%',
+                    row1: 'ความคืบหน้า:',
+                    val1: 'เสร็จสิ้น 100%',
+                    row2: 'รายการสำคัญ:',
+                    val2: 'ตรวจครบ 4/4 รายการ',
+                    row3: 'ทดสอบแอร์เย็น:',
+                    val3: 'เรียบร้อย',
+                    btnClose: 'ปิดหน้าต่าง'
+                }
+            },
+            my: {
+                flag: '🇲🇲',
+                code: 'MY',
+                headerTitle: 'ယာဉ်လွှဲပြောင်းခြင်း',
+                officeBadge: 'ရုံး',
+                headerSub: 'ယာဉ်ပြင်ဆင်ခြင်းနှင့် အငှားလွှဲပြောင်းပေးခြင်း ပရိုတိုကော',
+                resetBtn: 'ပြန်စရန်',
+                nav: ['1. ပြင်ဆင်', '🚨 2. စစ်ဆေး', '📸 3. ဓာတ်ပုံ', '4. ဝန်ဆောင်မှု', '🚨 5. လွှဲပြောင်း', '📊 ဒက်ရှ်ဘုတ်'],
+                s1: {
+                    header: 'အဆင့် ၁: ကြိုတင်ပြင်ဆင်ခြင်း (၁ နာရီအလို)',
+                    sub: 'စာရင်းစစ်ခြင်း၊ အထူးတောင်းဆိုချက်များနှင့် စာရွက်စာတမ်း ပြင်ဆင်ခြင်း',
+                    i11Title: '1.1 ဘိုကင်အချက်အလက် စစ်ဆေးခြင်း',
+                    i11Desc: 'ကားအမျိုးအစား၊ နံပါတ်၊ လာရောက်မည့်အချိန်နှင့် ကလေးထိုင်ခုံ စစ်ဆေးပါ',
+                    i12Title: '1.2 စာရွက်စာတမ်းနှင့် သော့ပြင်ဆင်ခြင်း',
+                    i12Desc: 'သော့ပြင်ဆင်ပါ၊ အငှားစာချုပ် ပရင့်ထုတ်ပါ'
+                },
+                s2: {
+                    header: 'အဆင့် ၂: အသေးစိတ် စစ်ဆေးခြင်း',
+                    badge: 'အရေးကြီး',
+                    sub: 'ကားဘော်ဒီ၊ အတွင်းခန်း၊ နောက်ဖုံး၊ မှန်ဆေးရေနှင့် အေစီအေးမအေး စစ်ခြင်း',
+                    i21Title: '2.1 ဘော်ဒီနှင့် မှန်များ စစ်ဆေးခြင်း',
+                    i21Desc: 'ဆေးကြောမှု စစ်ပါ၊ မှန်ပေါ်ရှိ ကျောက်စက်ရာနှင့် ဘီးများ စစ်ဆေးပါ',
+                    i22Title: '2.2 အတွင်းခန်းနှင့် ထိုင်ခုံအောက် စစ်ဆေးခြင်း',
+                    i22Desc: 'ထိုင်ခုံ/ကော်ဇော သန့်ရှင်းမှု စစ်ပါ၊ လက်အိတ်သေတ္တာနှင့် ထိုင်ခုံအောက် အမှိုက်/အနံ့ စစ်ပါ',
+                    i23Title: '2.3 နောက်ဖုံးနှင့် အရေးပေါ်ပစ္စည်းများ',
+                    i23Desc: 'နောက်ဖုံး သန့်ရှင်းမှု၊ အပိုဘီး/စက်ကိရိယာ၊ ဂျက်နှင့် ဂွ ပါမပါ စစ်ပါ',
+                    i24Title: '2.4 အင်ဂျင်နှင့် အရည်များ စစ်ဆေးခြင်း',
+                    i24Desc: 'စက်နှိုးပါ၊ မှန်သုတ်တံ၊ တိုင်ယာလေဖိအား စစ်ပါ၊ မှန်ဆေးရေ ဖြည့်ပါ',
+                    badge25: '🚨 အေစီအေးစနစ် စစ်ပါ',
+                    i25Title: '2.5 အေစီနှင့် လျှပ်စစ်စနစ် စစ်ဆေးခြင်း',
+                    i25Desc: 'အေစီအမြင့်ဆုံးဖွင့်ပါ — လေအေး အမှန်တကယ် ထွက်မထွက် သေချာစစ်ပါ! မီးကြီး၊ ဘရိတ်မီး၊ ကာလာမီး စစ်ပါ'
+                },
+                s3: {
+                    header: 'အဆင့် ၃: ဓာတ်ပုံနှင့် ဗီဒီယို ရိုက်ကူးခြင်း',
+                    sub: 'ဒက်ရှ်ဘုတ်၊ ၃၆၀° ဘော်ဒီ၊ အတွင်းခန်းနှင့် စက်သံဗီဒီယို',
+                    i31Title: '3.1 ဒက်ရှ်ဘုတ် ဓာတ်ပုံရိုက်ခြင်း',
+                    i31Desc: 'မိုင်နှုန်းနှင့် ဆီပမာဏ ထင်ရှားစွာ ဓာတ်ပုံရိုက်ပါ',
+                    badge32: '🚨 ၃၆၀° နှင့် အောက်ခြေ',
+                    i32Title: '3.2 ကားဘော်ဒီ အသေးစိတ် ဓာတ်ပုံရိုက်ခြင်း',
+                    i32Desc: 'ထောင့် ၄ ခု၊ မှန်၊ ဘီး ရိုက်ပါ၊ ဘမ်ပါအောက်ခြေ၊ ဘေးဘောင်နှင့် အမိုးကို မဖြစ်မနေ ရိုက်ပါ!',
+                    i33Title: '3.3 အတွင်းခန်းနှင့် နောက်ဖုံး ဓာတ်ပုံ',
+                    i33Desc: 'ရှေ့/နောက်ထိုင်ခုံများနှင့် နောက်ဖုံးဖွင့်ထားသည်ကို ဓာတ်ပုံရိုက်ပါ',
+                    i34Title: '3.4 ၃၆၀° ဗီဒီယို ရိုက်ကူးခြင်း',
+                    i34Desc: 'ဆက်တိုက်ဗီဒီယို - ပတ်ပတ်လည်၊ အတွင်းခန်း၊ စက်နှိုးထားသည့် အသံ ပါရှိစေရမည်',
+                    i35Title: '3.5 Telegram သို့ ဗီဒီယို/ဓာတ်ပုံ ပို့ခြင်း',
+                    i35Desc: 'ဓာတ်ပုံနှင့် ဗီဒီယို အားလုံးကို Telegram Group သို့ ချက်ချင်း ပို့ပါ'
+                },
+                s4: {
+                    header: 'အဆင့် ၄: နောက်ဆုံး ပြင်ဆင်မှု (၁၀-၁၅ မိနစ်အလို)',
+                    sub: 'ရေဘူး၊ တစ်ရှူးနှင့် ကားရပ်နားခြင်း',
+                    i41Title: '4.1 ဝန်ဆောင်မှု ပစ္စည်းများ ထည့်ခြင်း',
+                    i41Desc: 'သောက်ရေဘူး ထည့်ပါ၊ တစ်ရှူးဘူး ရှိမရှိ စစ်ပါ',
+                    i42Title: '4.2 ကားအား ရပ်နားနေရာသို့ ရွှေ့ခြင်း',
+                    i42Desc: 'လွှဲပြောင်းပေးရန် သင့်တော်သော နေရာတွင် ကားကို ရွှေ့ရပ်ပါ'
+                },
+                s5: {
+                    header: 'အဆင့် ၅: စာရွက်စာတမ်း၊ ရှင်းပြခြင်းနှင့် လွှဲပြောင်းခြင်း',
+                    sub: 'စာရွက်စာတမ်း စစ်ခြင်း၊ ဓာတ်ပုံ၊ ငွေချေခြင်းနှင့် စည်းကမ်း ရှင်းပြခြင်း',
+                    badge51: '🚨 ကားနံပါတ်ပါ ဓာတ်ပုံ',
+                    i51Title: '5.1 စာရွက်စာတမ်း စစ်ဆေးခြင်းနှင့် ဓာတ်ပုံ',
+                    i51Desc: 'ပတ်စပို့၊ ယာဉ်မောင်းလိုင်စင် စစ်ပါ၊ ဧည့်သည်ကို ကားနံပါတ်ပေါ်အောင် ကားနှင့်တွဲ၍ ဓာတ်ပုံရိုက်ပါ!',
+                    i52Title: '5.2 စာချုပ်လက်မှတ်ထိုးခြင်းနှင့် ငွေချေခြင်း',
+                    i52Desc: 'စာချုပ်လက်မှတ်ထိုးပါ၊ ကျန်ငွေနှင့် စကားစရံ ယူပါ၊ စာချုပ်ပေးပါ',
+                    badge53: '🚨 မဖြစ်မနေ ရှင်းပြရန်',
+                    i53Title: '5.3 အငှားစည်းကမ်းများ ရှင်းပြခြင်း',
+                    i53Desc: 'ရှင်းပြပါ: ၁. ဆီပမာဏ စည်းကမ်း; ၂. မတော်တဆဖြစ်ပါက -> ကျွန်ုပ်တို့ WhatsApp သို့ အကြောင်းကြားပါ; ၃. လမ်းကြေး/ဒဏ်ကြေး; ၄. ဆေးလိပ်/ဒူရင်းသီး မသောက်/မစားရ။'
+                },
+                dash: {
+                    title: 'ဒက်ရှ်ဘုတ်နှင့် Telegram အစီရင်ခံစာ',
+                    tgTitle: 'Telegram အစီရင်ခံစာ',
+                    tgBadge: 'ပုံစံ',
+                    lblCar: 'ကားနံပါတ်:',
+                    placeholderCar: 'ကားနံပါတ် ထည့်ပါ',
+                    lblStatus: 'လွှဲပြောင်းမှု အခြေအနေ (စာရင်းမှ ရွေးပါ):',
+                    statuses: [
+                        'ကား အပြည့်အဝ ပြင်ဆင်ပြီး ဧည့်သည်သို့ လွှဲပြောင်းပေးပြီးပါပြီ',
+                        'ယခင်ရှိပြီးသား ပွန်းပဲ့ရာအား ဓာတ်ပုံရိုက်၍ လွှဲပြောင်းပေးခဲ့သည်',
+                        'သဘောတူညီချက်အတိုင်း လက်ရှိ ဆီပမာဏ မှတ်သား၍ လွှဲပြောင်းခဲ့သည်',
+                        'အပိုပစ္စည်းများ (ကလေးထိုင်ခုံ) တပ်ဆင်၍ လွှဲပြောင်းမှု ပြီးစီးပါပြီ',
+                        'လွှဲပြောင်းမှု လုပ်ဆောင်နေဆဲ / ဧည့်သည်ဘက်မှ အနည်းငယ် ကြန့်ကြာမှုရှိသည်'
+                    ],
+                    btnCopy: 'အစီရင်ခံစာ စာသား ကူးယူပါ',
+                    btnFinish: 'လွှဲပြောင်းမှု ပြီးဆုံးပါပြီ',
+                    dockCrit: 'အရေးကြီး'
+                },
+                chart: {
+                    done: 'ပြီးစီးပါပြီ',
+                    remaining: ['ကျန်ရှိနေသော', 'စစ်ဆေးရန်']
+                },
+                modalWarn: {
+                    title: 'လွှဲပြောင်းမှု မပြီးသေးပါ!',
+                    sub: 'စစ်ဆေးရန် ကျန်ရှိနေသေးသော အဆင့်များ ရှိသည်',
+                    critHeader: 'အရေးကြီး ကျန်ရှိနေသော အဆင့်များ:',
+                    stdHeader: 'ပုံမှန် ကျန်ရှိနေသော အဆင့်များ:',
+                    btnClose: 'နားလည်ပါပြီ၊ ပြင်ဆင်ခြင်းသို့ ပြန်သွားမည်',
+                    btnJump: 'သွားမည် →'
+                },
+                modalSucc: {
+                    title: 'လွှဲပြောင်းမှု ပြီးဆုံးပါပြီ!',
+                    sub: 'စစ်ဆေးမှု အဆင့်အားလုံး အောင်မြင်စွာ ပြီးဆုံးခဲ့ပါသည်။ တောင်းဆိုမှု အန္တရာယ် 0% သို့ လျှော့ချခဲ့ပြီးဖြစ်သည်။',
+                    row1: 'စစ်ဆေးမှု တိုးတက်မှု:',
+                    val1: '100% ပြီးစီးပါပြီ',
+                    row2: 'အရေးကြီး စစ်ဆေးမှု:',
+                    val2: '4 ခုအနက် 4 ခု စစ်ပြီးပါပြီ',
+                    row3: 'အေစီအေးစနစ် စစ်ဆေးမှု:',
+                    val3: 'ပြီးစီးပါပြီ',
+                    btnClose: 'ပိတ်မည်'
+                }
+            }
+        };
+
+        const ENGLISH_TG_STATUSES = [
+            "Car fully prepared & handed over to client (no issues, deposit received)",
+            "Handed over with existing scratch noted (photo logged in chat)",
+            "Handed over with fuel level logged per agreement",
+            "Handover completed, extra accessories provided (child seat)",
+            "Handover pending / minor technical adjustment before departure"
+        ];
+
+        let currentLang = 'ru';
+
+        const allCheckboxes = Array.from(document.querySelectorAll('.checkbox-touch'));
+        const totalItems = allCheckboxes.length;
+        const criticalCheckboxes = allCheckboxes.filter(cb => cb.dataset.critical === "true");
+        const standardCheckboxes = allCheckboxes.filter(cb => cb.dataset.critical !== "true");
+
+        let liveChart;
+
+        function initChart() {
+            const ctx = document.getElementById('liveStatusChart').getContext('2d');
+            const langData = I18N[currentLang].chart;
+            liveChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: [[langData.done], langData.remaining],
+                    datasets: [{
+                        data: [0, totalItems],
+                        backgroundColor: ['#10b981', '#334155'],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'bottom', 
+                            labels: { color: '#cbd5e1', font: { size: 11, weight: 'bold' } } 
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(tooltipItems) {
+                                    const item = tooltipItems[0];
+                                    let label = item.chart.data.labels[item.dataIndex];
+                                    return Array.isArray(label) ? label.join(' ') : label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function applyLanguage(lang) {
+            if (!I18N[lang]) lang = 'ru';
+            currentLang = lang;
+            const data = I18N[lang];
+
+            document.getElementById('currentLangFlag').innerText = data.flag;
+            document.getElementById('currentLangCode').innerText = data.code;
+            document.getElementById('txtHeaderTitle').innerText = data.headerTitle;
+            document.getElementById('txtHeaderOfficeBadge').innerText = data.officeBadge;
+            document.getElementById('txtHeaderSub').innerText = data.headerSub;
+            document.getElementById('txtResetBtn').innerText = data.resetBtn;
+
+            for (let i = 1; i <= 6; i++) {
+                document.getElementById('txtNavStage' + i).innerText = data.nav[i-1];
+            }
+
+            document.getElementById('txtS1Header').innerText = data.s1.header;
+            document.getElementById('txtS1Sub').innerText = data.s1.sub;
+            document.getElementById('title_1_1').innerText = data.s1.i11Title;
+            document.getElementById('desc_1_1').innerText = data.s1.i11Desc;
+            document.getElementById('title_1_2').innerText = data.s1.i12Title;
+            document.getElementById('desc_1_2').innerText = data.s1.i12Desc;
+
+            document.getElementById('txtS2Header').innerText = data.s2.header;
+            document.getElementById('txtS2Badge').innerText = data.s2.badge;
+            document.getElementById('txtS2Sub').innerText = data.s2.sub;
+            document.getElementById('title_2_1').innerText = data.s2.i21Title;
+            document.getElementById('desc_2_1').innerText = data.s2.i21Desc;
+            document.getElementById('title_2_2').innerText = data.s2.i22Title;
+            document.getElementById('desc_2_2').innerText = data.s2.i22Desc;
+            document.getElementById('title_2_3').innerText = data.s2.i23Title;
+            document.getElementById('desc_2_3').innerText = data.s2.i23Desc;
+            document.getElementById('title_2_4').innerText = data.s2.i24Title;
+            document.getElementById('desc_2_4').innerText = data.s2.i24Desc;
+            document.getElementById('badge_2_5').innerText = data.s2.badge25;
+            document.getElementById('title_2_5').innerText = data.s2.i25Title;
+            document.getElementById('desc_2_5').innerHTML = data.s2.i25Desc;
+
+            document.getElementById('txtS3Header').innerText = data.s3.header;
+            document.getElementById('txtS3Sub').innerText = data.s3.sub;
+            document.getElementById('title_3_1').innerText = data.s3.i31Title;
+            document.getElementById('desc_3_1').innerText = data.s3.i31Desc;
+            document.getElementById('badge_3_2').innerText = data.s3.badge32;
+            document.getElementById('title_3_2').innerText = data.s3.i32Title;
+            document.getElementById('desc_3_2').innerHTML = data.s3.i32Desc;
+            document.getElementById('title_3_3').innerText = data.s3.i33Title;
+            document.getElementById('desc_3_3').innerText = data.s3.i33Desc;
+            document.getElementById('title_3_4').innerText = data.s3.i34Title;
+            document.getElementById('desc_3_4').innerText = data.s3.i34Desc;
+            document.getElementById('title_3_5').innerText = data.s3.i35Title;
+            document.getElementById('desc_3_5').innerText = data.s3.i35Desc;
+
+            document.getElementById('txtS4Header').innerText = data.s4.header;
+            document.getElementById('txtS4Sub').innerText = data.s4.sub;
+            document.getElementById('title_4_1').innerText = data.s4.i41Title;
+            document.getElementById('desc_4_1').innerText = data.s4.i41Desc;
+            document.getElementById('title_4_2').innerText = data.s4.i42Title;
+            document.getElementById('desc_4_2').innerText = data.s4.i42Desc;
+
+            document.getElementById('txtS5Header').innerText = data.s5.header;
+            document.getElementById('txtS5Sub').innerText = data.s5.sub;
+            document.getElementById('badge_5_1').innerText = data.s5.badge51;
+            document.getElementById('title_5_1').innerText = data.s5.i51Title;
+            document.getElementById('desc_5_1').innerHTML = data.s5.i51Desc;
+            document.getElementById('title_5_2').innerText = data.s5.i52Title;
+            document.getElementById('desc_5_2').innerText = data.s5.i52Desc;
+            document.getElementById('badge_5_3').innerText = data.s5.badge53;
+            document.getElementById('title_5_3').innerText = data.s5.i53Title;
+            document.getElementById('desc_5_3').innerHTML = data.s5.i53Desc;
+
+            document.getElementById('txtDashTitle').innerHTML = `<span>📊</span> ${data.dash.title}`;
+            document.getElementById('txtTgTitle').innerHTML = `<span>📱</span> ${data.dash.tgTitle}`;
+            document.getElementById('txtTgBadge').innerText = data.dash.tgBadge;
+            document.getElementById('lblTgCar').innerText = data.dash.lblCar;
+            document.getElementById('tgCarName').placeholder = data.dash.placeholderCar;
+            document.getElementById('lblTgStatus').innerText = data.dash.lblStatus;
+            
+            const tgSelect = document.getElementById('tgStatus');
+            const selectedVal = tgSelect.value;
+            tgSelect.innerHTML = '';
+            data.dash.statuses.forEach((stText, idx) => {
+                const opt = document.createElement('option');
+                opt.value = idx;
+                opt.innerText = stText;
+                tgSelect.appendChild(opt);
+            });
+            tgSelect.value = selectedVal;
+
+            document.getElementById('btnCopyTg').innerText = data.dash.btnCopy;
+            document.getElementById('btnFinishDesk').innerText = data.dash.btnFinish;
+            document.getElementById('btnFinishMob').innerText = data.dash.btnFinish;
+            document.getElementById('lblDockCritical').innerText = data.dash.dockCrit;
+
+            document.getElementById('txtWarnTitle').innerText = data.modalWarn.title;
+            document.getElementById('txtWarnSub').innerText = data.modalWarn.sub;
+            document.getElementById('txtWarnCritHeader').innerHTML = `<span>🚨</span> ${data.modalWarn.critHeader}`;
+            document.getElementById('txtWarnStdHeader').innerHTML = `<span>📋</span> ${data.modalWarn.stdHeader}`;
+            document.getElementById('btnWarnClose').innerText = data.modalWarn.btnClose;
+
+            document.getElementById('txtSuccTitle').innerText = data.modalSucc.title;
+            document.getElementById('txtSuccSub').innerText = data.modalSucc.sub;
+            document.getElementById('txtSuccRow1').innerText = data.modalSucc.row1;
+            document.getElementById('txtSuccVal1').innerText = data.modalSucc.val1;
+            document.getElementById('txtSuccRow2').innerText = data.modalSucc.row2;
+            document.getElementById('txtSuccVal2').innerText = data.modalSucc.val2;
+            document.getElementById('txtSuccRow3').innerText = data.modalSucc.row3;
+            document.getElementById('txtSuccVal3').innerText = data.modalSucc.val3;
+            document.getElementById('btnSuccClose').innerText = data.modalSucc.btnClose;
+
+            if (liveChart) {
+                liveChart.data.labels = [[data.chart.done], data.chart.remaining];
+                liveChart.update();
+            }
+        }
+
+        function selectLanguage(lang) {
+            applyLanguage(lang);
+            closeModal('modalLanguage');
+        }
+
+        function openLanguageModal() {
+            document.getElementById('modalLanguage').classList.remove('hidden');
+        }
+
+        function getItemTitle(idSuffix) {
+            const el = document.getElementById('title_' + idSuffix);
+            return el ? el.innerText.trim() : 'Step ' + idSuffix;
+        }
+
+        function updateChecklist() {
+            const checkedItems = allCheckboxes.filter(cb => cb.checked);
+            const checkedCount = checkedItems.length;
+            const overallPercent = Math.round((checkedCount / totalItems) * 100);
+
+            const checkedCritical = criticalCheckboxes.filter(cb => cb.checked).length;
+
+            document.getElementById('dockPercentText').innerText = overallPercent + '%';
+            document.getElementById('dockRingContainer').style.background = `conic-gradient(#10b981 ${overallPercent * 3.6}deg, #334155 ${overallPercent * 3.6}deg)`;
+            document.getElementById('dockCriticalBadge').innerText = `${checkedCritical} / ${criticalCheckboxes.length}`;
+
+            updateStage(1, [1, 2]);
+            updateStage(2, [1, 2, 3, 4, 5]);
+            updateStage(3, [1, 2, 3, 4, 5]);
+            updateStage(4, [1, 2]);
+            updateStage(5, [1, 2, 3]);
+
+            if (liveChart) {
+                liveChart.data.datasets[0].data = [checkedCount, totalItems - checkedCount];
+                liveChart.update();
+            }
+        }
+
+        function updateStage(stageNum, itemSuffixes) {
+            const stageCbs = itemSuffixes.map(s => document.getElementById('check_' + stageNum + '_' + s));
+            const checked = stageCbs.filter(cb => cb && cb.checked).length;
+            const percent = Math.round((checked / stageCbs.length) * 100);
+
+            document.getElementById('stageProgress' + stageNum).innerText = percent + '%';
+            document.getElementById('navBadge' + stageNum).innerText = percent + '%';
+            document.getElementById('stageBar' + stageNum).style.width = percent + '%';
+
+            const card = document.getElementById('stageCard' + stageNum);
+            if (percent === 100) {
+                card.classList.add('border-emerald-500/40', 'bg-emerald-950/10');
+            } else {
+                card.classList.remove('border-emerald-500/40', 'bg-emerald-950/10');
+            }
+        }
+
+        function scrollToStage(stageNum) {
+            const el = document.getElementById('stageCard' + stageNum);
+            if (el) {
+                const yOffset = -120;
+                const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+            }
+        }
+
+        function jumpToItem(id) {
+            closeModal('modalWarning');
+            const wrapper = document.getElementById('wrapper_' + id);
+            if (wrapper) {
+                const yOffset = -130;
+                const y = wrapper.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                window.scrollTo({ top: y, behavior: 'smooth' });
+                
+                wrapper.classList.remove('item-highlight');
+                void wrapper.offsetWidth;
+                wrapper.classList.add('item-highlight');
+            }
+        }
+
+        function resetChecklist() {
+            const msg = currentLang === 'ru' ? 'Сбросить все отмеченные шаги инспекции?' : 'Reset all checklist items?';
+            if (confirm(msg)) {
+                allCheckboxes.forEach(cb => cb.checked = false);
+                updateChecklist();
+            }
+        }
+
+        function attemptFinish() {
+            const uncheckedCritical = criticalCheckboxes.filter(cb => !cb.checked);
+            const uncheckedStandard = standardCheckboxes.filter(cb => !cb.checked);
+
+            if (uncheckedCritical.length === 0 && uncheckedStandard.length === 0) {
+                triggerConfetti();
+                document.getElementById('modalSuccess').classList.remove('hidden');
+            } else {
+                const critList = document.getElementById('criticalMissingList');
+                const stdList = document.getElementById('standardMissingList');
+                critList.innerHTML = '';
+                stdList.innerHTML = '';
+
+                const jumpText = I18N[currentLang].modalWarn.btnJump;
+
+                if (uncheckedCritical.length > 0) {
+                    document.getElementById('criticalWarningBlock').classList.remove('hidden');
+                    uncheckedCritical.forEach(cb => {
+                        const idSuffix = cb.id.replace('check_', '');
+                        const title = getItemTitle(idSuffix);
+                        const btn = document.createElement('button');
+                        btn.className = "w-full text-left p-2.5 bg-rose-900/60 hover:bg-rose-800 text-rose-100 rounded-xl text-xs font-medium flex items-center justify-between border border-rose-700/50 active:scale-98 transition";
+                        btn.onclick = () => jumpToItem(idSuffix);
+                        btn.innerHTML = `<span class="truncate font-semibold">🚨 ${title}</span> <span class="text-[10px] bg-rose-950 px-2 py-0.5 rounded text-rose-300 font-bold shrink-0 ml-2">${jumpText}</span>`;
+                        critList.appendChild(btn);
+                    });
+                } else {
+                    document.getElementById('criticalWarningBlock').classList.add('hidden');
+                }
+
+                if (uncheckedStandard.length > 0) {
+                    document.getElementById('standardWarningBlock').classList.remove('hidden');
+                    uncheckedStandard.forEach(cb => {
+                        const idSuffix = cb.id.replace('check_', '');
+                        const title = getItemTitle(idSuffix);
+                        const btn = document.createElement('button');
+                        btn.className = "w-full text-left p-2.5 bg-amber-900/40 hover:bg-amber-800/60 text-amber-100 rounded-xl text-xs font-medium flex items-center justify-between border border-amber-700/50 active:scale-98 transition";
+                        btn.onclick = () => jumpToItem(idSuffix);
+                        btn.innerHTML = `<span class="truncate font-semibold">📋 ${title}</span> <span class="text-[10px] bg-amber-950 px-2 py-0.5 rounded text-amber-300 font-bold shrink-0 ml-2">${jumpText}</span>`;
+                        stdList.appendChild(btn);
+                    });
+                } else {
+                    document.getElementById('standardWarningBlock').classList.add('hidden');
+                }
+
+                document.getElementById('modalWarning').classList.remove('hidden');
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function fallbackCopyTextToClipboard(text) {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.top = "0";
+            textArea.style.left = "0";
+            textArea.style.position = "fixed";
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    alert('Report text copied to clipboard!');
+                } else {
+                    alert('Copy failed. Please copy text manually.');
+                }
+            } catch (err) {
+                alert('Copy error. Please copy text manually.');
+            }
+
+            document.body.removeChild(textArea);
+        }
+
+        function copyTgReport() {
+            const carInput = document.getElementById('tgCarName').value.trim();
+            const car = carInput || 'Not specified';
+            
+            const selectedOptIndex = document.getElementById('tgStatus').value;
+            const statusEnglish = ENGLISH_TG_STATUSES[selectedOptIndex] || ENGLISH_TG_STATUSES[0];
+
+            const checkedCount = allCheckboxes.filter(cb => cb.checked).length;
+            const overallPercent = Math.round((checkedCount / totalItems) * 100);
+            const uncheckedCritical = criticalCheckboxes.filter(cb => !cb.checked).length;
+
+            let criticalStatusText = "";
+            if (uncheckedCritical > 0) {
+                criticalStatusText = `Skipped critical items: ${uncheckedCritical}`;
+            } else {
+                criticalStatusText = `Critical control 100% completed`;
+            }
+
+            const text = `#OfficeHandover #VehicleIssued\n` +
+                         `--------------------------------\n` +
+                         `Car Plate: ${car}\n` +
+                         `--------------------------------\n` +
+                         `Status: ${statusEnglish}\n` +
+                         `--------------------------------\n` +
+                         `[ Handover Checklist V5 Completed: ${overallPercent}% | ${criticalStatusText} ]`;
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(() => {
+                    alert('Report copied to clipboard! (English template)');
+                }).catch(() => {
+                    fallbackCopyTextToClipboard(text);
+                });
+            } else {
+                fallbackCopyTextToClipboard(text);
+            }
+        }
+
+        function setupAutoScrollNav() {
+            const stages = document.querySelectorAll('.stage-section');
+            const navContainer = document.getElementById('navContainer');
+
+            const observerOptions = {
+                root: null,
+                rootMargin: '-20% 0px -60% 0px',
+                threshold: 0
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const stageId = entry.target.id.replace('stageCard', '');
+                        
+                        document.querySelectorAll('.stage-nav-btn').forEach(btn => btn.classList.remove('active'));
+                        
+                        const activeBtn = document.getElementById('navBtn_' + stageId);
+                        if (activeBtn) {
+                            activeBtn.classList.add('active');
+                            
+                            const scrollLeft = activeBtn.offsetLeft - (navContainer.offsetWidth / 2) + (activeBtn.offsetWidth / 2);
+                            navContainer.scrollTo({ left: scrollLeft, behavior: 'smooth' });
+                        }
+                    }
+                });
+            }, observerOptions);
+
+            stages.forEach(stage => observer.observe(stage));
+        }
+
+        function triggerConfetti() {
+            const canvas = document.getElementById('confettiCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            const particles = [];
+            const colors = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#3b82f6'];
+
+            for (let i = 0; i < 80; i++) {
+                particles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height - canvas.height,
+                    size: Math.random() * 6 + 3,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    vy: Math.random() * 4 + 2,
+                    vx: Math.random() * 2 - 1
+                });
+            }
+
+            function render() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                particles.forEach(p => {
+                    p.y += p.vy;
+                    p.x += p.vx;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x, p.y, p.size, p.size);
+                });
+
+                if (particles.some(p => p.y < canvas.height)) {
+                    requestAnimationFrame(render);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+            }
+            render();
+        }
+
+        window.onload = function() {
+            initChart();
+            applyLanguage('ru');
+            updateChecklist();
+            setupAutoScrollNav();
+            document.getElementById('modalLanguage').classList.remove('hidden');
+        };
+    </script>
+</body>
+</html>
